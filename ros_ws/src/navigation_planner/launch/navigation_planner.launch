@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- This launch file configures move_base for Unitree GO2 robot navigation -->
+  
+  <!-- Move Base Configuration -->
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <!-- Local Planner Configuration -->
+    <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
+    
+    <rosparam file="$(find navigation_planner)/config/dwa_local_planner_params.yaml" command="load"/>
+    <rosparam file="$(find navigation_planner)/config/base_local_planner_params.yaml" command="load"/>
+    
+    <!-- Costmap Configuration -->
+    <rosparam file="$(find navigation_planner)/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find navigation_planner)/config/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find navigation_planner)/config/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find navigation_planner)/config/global_costmap_params.yaml" command="load" />
+    
+    <rosparam file="$(find navigation_planner)/config/move_base_params.yaml" command="load" />
+    <param name="tf_buffer_length" value="10.0"/>
+    
+    <!-- Topic Remapping for Odin Sensor Integration -->
+    <remap from="map" to="/map"/>
+    <remap from="scan" to="/scan"/>
+    <remap from="odom" to="/odin1/odometry"/>
+    
+    <!-- Velocity Constraints for Unitree GO2 -->
+    <param name="DWAPlannerROS/min_vel_x" value="0.0"/>
+    <param name="DWAPlannerROS/max_vel_x" value="0.6"/>
+    <param name="DWAPlannerROS/max_vel_y" value="0.0"/>
+    <param name="DWAPlannerROS/max_vel_trans" value="0.6"/>
+    <param name="DWAPlannerROS/max_vel_theta" value="2.0"/>
+  </node>
+  
+
+  
+  <!-- Optional: Launch RViz for Navigation Visualization -->
+  <arg name="rviz" default="false" />
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz_navigation" required="true"
+        args="-d $(find unitree_navigation)/config/unitree_navigation.rviz"/>
+</launch>

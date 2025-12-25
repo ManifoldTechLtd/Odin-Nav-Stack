@@ -1,0 +1,88 @@
+<launch>
+  <include file="$(find foxglove_bridge)/launch/foxglove_bridge.launch" />
+  <!-- <include file="$(find odin_ros_driver)/launch/odin1_ros1.launch" /> -->
+
+  <arg name="map_topic" default="/map" />
+  <arg name="map_file_name" default="awesome_map" />
+  <arg name="goal_topic" default="/move_base_simple/goal" />
+  <arg name="path_topic" default="/initial_path" />
+  <arg name="service_name" default="/map_planner/plan" />
+  <arg name="inflation_radius" default="0.25" />
+  <arg name="inflated_map_topic" default="/inflated_map" />
+  <arg name="publish_path" default="true" />
+  <arg name="arrive_topic" default="/neupan/arrive" />
+
+  <!-- Map Server -->
+  <node pkg="map_server" type="map_server" name="map_server" output="screen"
+        args="$(find map_planner)/maps/$(arg map_file_name).yaml">
+    <remap from="/map" to="$(arg map_topic)" />
+  </node>
+
+  <!-- Map A* Planner -->
+  <node pkg="map_planner" type="map_planner" name="map_planner" output="screen">
+    <param name="inflation_radius" value="$(arg inflation_radius)" />
+    <param name="service_name" value="$(arg service_name)" />
+    <param name="publish_path" value="$(arg publish_path)" />
+    <remap from="map" to="$(arg map_topic)" />
+    <remap from="/move_base_simple/goal" to="$(arg goal_topic)" />
+    <remap from="initial_path" to="$(arg path_topic)" />
+    <remap from="inflated_map" to="$(arg inflated_map_topic)" />
+  </node>
+
+  <!-- Goal State Machine -->
+  <arg name="goal_tolerance" default="0.3" />
+  <node pkg="map_planner" type="goal_state_machine" name="goal_state_machine" output="screen">
+    <param name="plan_service" value="$(arg service_name)" />
+    <param name="goal_tolerance" value="$(arg goal_tolerance)" />
+    <remap from="/neupan/arrive" to="$(arg arrive_topic)" />
+    <remap from="/move_base_simple/goal" to="$(arg goal_topic)" />
+  </node>
+
+  <!-- Static TF -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="imu_to_base"
+        args="-0.3 0 0 0 0 0 odin1_base_link base_link" />
+  <node pkg="tf2_ros" type="static_transform_publisher" name="imu_to_lidar"
+        args="0.00347 0.03447 0.02174 0 0 0 1 odin1_base_link odin1_lidar_link" />
+  <node pkg="tf2_ros" type="static_transform_publisher" name="lidar_to_camera"
+        args="0.02055 0.0004 -0.00735 0.497 -0.499 0.499 0.504 odin1_lidar_link odin1_camera_link" />
+  
+  <!-- Unitree Control -->
+  <node pkg="unitree_control" type="unitree_vel_controller" name="vel_to_sdk"/>
+
+  <!-- 点云转 LaserScan 节点 -->
+  <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="pc_to_scan" output="screen">
+
+    <param name="target_frame"        value="odin1_base_link"/>
+    <param name="transform_tolerance" value="0.1"/>
+
+    <param name="min_height"          value="0.0"/>
+    <param name="max_height"          value="0.3"/>
+
+    <param name="angle_min"           value="-0.7853"/>
+    <param name="angle_max"           value="0.7853"/>
+    <param name="angle_increment"     value="0.017"/>
+    <param name="scan_time"           value="0.1"/>
+
+    <param name="range_min"           value="0.2"/>
+    <param name="range_max"           value="5.0"/>
+
+    <remap from="cloud_in" to="/odin1/cloud_slam"/>
+    <remap from="scan"     to="/scan"/>
+  </node>
+
+  <!-- Fake 360 scan -->
+  <!-- <node pkg="fake360" type="fake360_node" name="fake360_node" output="screen">  
+    <param name="map_frame" value="odom" />
+    <param name="base_frame" value="odin1_base_link" />
+    <param name="input_scan_topic" value="/scan" />
+    <param name="fake_scan_topic" value="/scan_360" />
+    <param name="map_topic" value="/fake_map" />
+    <param name="range_min" value="0.05" />
+    <param name="max_fake_range" value="4.5" />
+    <param name="output_points" value="360" />
+    <param name="resolution" value="0.05" />
+    <param name="width" value="400" />
+    <param name="height" value="400" />
+  </node> -->
+</launch>
+

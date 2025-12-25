@@ -1,0 +1,19 @@
+<launch>
+  <arg name="topic" default="/odin1/image/compressed"/> <!-- image or image/compressed both ok-->
+  <arg name="server" default="http://localhost:8080"/> <!-- llama-server base URL -->
+  <arg name="model" default="SmolVLM-500M-Instruct"/> <!-- model name,decided by llama-server you open -->
+  <arg name="instruction" default="describe what you see and in very detailed"/> <!-- prompt -->
+  <arg name="interval" default="0.0"/> <!-- keep 0 to activate user prompt -->
+  <node pkg="odin_vlm_terminal" type="ros_vlm_terminal.py" name="odin_vlm_terminal" output="screen">
+    <param name="~unused" value="0"/>
+    <rosparam subst_value="true">
+    </rosparam>
+    <remap from="~topic" to="$(arg topic)"/>
+    <env name="PYTHONUNBUFFERED" value="1"/>
+    <param name="topic" value="$(arg topic)"/>
+    <param name="server" value="$(arg server)"/>
+    <param name="model" value="$(arg model)"/>
+    <param name="instruction" value="$(arg instruction)"/>
+    <param name="interval" value="$(arg interval)"/>
+  </node>
+</launch>

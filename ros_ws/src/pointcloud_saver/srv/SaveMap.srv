@@ -1,0 +1,13 @@
+# 保存地图服务
+# Request
+string filename          # PCD文件名（可选，默认自动生成时间戳）
+float32 voxel_size       # 体素滤波大小（米，默认0.05）
+bool apply_statistical_filter  # 是否应用统计滤波（默认true）
+
+---
+# Response
+bool success             # 是否成功
+string message           # 状态消息
+string saved_path        # 保存的文件路径
+int32 total_points       # 原始点云总数
+int32 filtered_points    # 滤波后点云数量

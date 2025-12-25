@@ -1,0 +1,20 @@
+<launch>
+  <arg name="cloud_topic" default="/odin1/cloud_slam" />
+  <arg name="target_frame" default="map" />
+  <arg name="save_dir" default="$(find pcd2pgm)/maps" />
+  <arg name="max_points" default="10000000" />
+  <arg name="auto_publish" default="true" />
+  
+  <node name="pointcloud_saver" pkg="pointcloud_saver" type="pointcloud_saver_node.py" output="screen">
+    <param name="cloud_topic" value="$(arg cloud_topic)"/>
+    <param name="target_frame" value="$(arg target_frame)"/>
+    <param name="save_dir" value="$(arg save_dir)"/>
+    <param name="max_points" value="$(arg max_points)"/>
+    <param name="online_voxel_size" value="0.10"/>
+    <param name="save_rgb" value="true"/>
+    <param name="auto_publish" value="true"/>
+    <param name="pcd_binary" value="false"/>
+    <param name="max_stat_points" value="150000"/>
+  </node>
+  
+</launch>

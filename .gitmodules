@@ -1,0 +1,9 @@
+[submodule "yolov5"]
+	path = yolov5
+	url = https://github.com/ultralytics/yolov5.git
+[submodule "ros_ws/src/odin_ros_driver"]
+	path = ros_ws/src/odin_ros_driver
+	url = https://github.com/manifoldsdk/odin_ros_driver.git
+[submodule "NeuPAN"]
+	path = NeuPAN
+	url = https://github.com/ManifoldTehLtd/NeuPAN

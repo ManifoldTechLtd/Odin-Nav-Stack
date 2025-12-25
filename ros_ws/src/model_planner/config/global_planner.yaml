@@ -1,0 +1,4 @@
+global_planner:
+  map_frame: "map"
+  robot_frame: "base_link"
+  inflation_radius: 0.8

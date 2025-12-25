@@ -1,0 +1,5 @@
+maps/*.pgm
+maps/*.yaml
+maps/*.backup
+!maps/empty.pgm
+!maps/empty.yaml

@@ -1,0 +1,15 @@
+<launch>
+	
+	<rosparam command="load" file="$(find fish2pinhole)/launch/calib.yaml"/>
+
+	<node pkg="fish2pinhole" type="fish2pinhole_node" name="fish2pinhole_node" output="screen" > 
+         <param name="odin1_topic"  type="str" value="/odin1/image"/>
+         <param name="pinhole_topic"  type="str" value="/odin1/color_img_competition"/>
+    </node>
+    <!-- TODO  TCL_inv -> xyz xyzw-->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="tf1" 
+        args="-0.0041913 0.0328348 0.00047469 -0.4951045 0.5047694 -0.4996042 0.5004749 odin1_base_link camera_link " 
+        output="screen"/>
+
+
+</launch>

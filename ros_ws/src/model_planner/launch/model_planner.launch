@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<launch>
+    <node pkg="map_server" type="map_server" name="map_server" output="screen"
+            args="$(find model_planner)/maps/huide13_light.yaml">
+    </node>
+    
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="pc_to_scan" output="screen">
+
+        <param name="target_frame"        value="odin1_base_link"/>
+        <param name="transform_tolerance" value="0.1"/>
+
+        <param name="min_height"          value="0.0"/>
+        <param name="max_height"          value="0.3"/>
+
+        <param name="angle_min"           value="-0.7853"/>
+        <param name="angle_max"           value="0.7853"/>
+        <param name="angle_increment"     value="0.017"/>
+        <param name="scan_time"           value="0.1"/>
+
+        <param name="range_min"           value="0.2"/>
+        <param name="range_max"           value="5.0"/>
+
+        <remap from="cloud_in" to="/odin1/cloud_slam"/>
+        <remap from="scan"     to="/scan"/>
+    </node>
+
+    <node pkg="tf2_ros" type="static_transform_publisher" name="imu_to_base"
+        args="-0.3 0 0 0 0 0 odin1_base_link base_link" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="imu_to_lidar"
+        args="0.00347 0.03447 0.02174 0 0 0 1 odin1_base_link odin1_lidar_link" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="lidar_to_camera"
+        args="0.02055 0.0004 -0.00735 0.497 -0.499 0.499 0.504 odin1_lidar_link odin1_camera_link" />
+
+    <node pkg="model_planner" type="global_planner_node" name="global_planner" output="screen">
+      <rosparam command="load" file="$(find model_planner)/config/global_planner.yaml"/>
+    </node>
+
+    <node pkg="model_planner" type="local_planner_node" name="local_planner" output="screen">
+        <rosparam command="load" file="$(find model_planner)/config/local_planner.yaml" />
+    </node>
+
+
+  <!-- Unitree Control -->
+  <node pkg="unitree_control" type="unitree_vel_controller" name="vel_to_sdk"/>
+</launch>

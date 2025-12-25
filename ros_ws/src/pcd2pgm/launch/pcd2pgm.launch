@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Map Configuration -->
+  <arg name="map_file_path" default="" doc="Full path to map PCD file (overrides default_map_filename if provided)"/>
+  <arg name="default_map_filename" default="" doc="Default map filename in pcd2pgm/maps/ directory"/>
+  
+  <!-- Relocalization and Mapping Node -->
+  <node name="pcd2pgm_node" pkg="pcd2pgm" type="pcd2pgm_node" output="screen">
+    <!-- Map file configuration -->
+    <param name="map_file_path" value="$(arg map_file_path)" />
+    <param name="default_map_filename" value="$(arg default_map_filename)" />
+    
+    <!-- Height filtering parameters for point cloud processing -->
+    <param name="min_height" value="-0.1" />
+    <param name="max_height" value="0.1" />
+    
+    <!-- Grid map resolution -->
+    <param name="resolution" value="0.1" />
+    
+    <!-- Point cloud processing parameters -->
+    <param name="voxel_size" value="0.1" />
+    <param name="local_crop_size" value="5.0" />
+    
+    <!-- Crop region parameters -->
+    <param name="crop_x_min" value="0.0" />
+    <param name="crop_x_max" value="5.0" />
+    <param name="crop_y_min" value="-5.0" />
+    <param name="crop_y_max" value="5.0" />
+    <param name="max_icp_iterations" value="500" />
+     <param name="max_correspondence_distance_" value="1.0" />
+  </node>
+</launch>

@@ -1,0 +1,15 @@
+<launch>
+  <node pkg="fake360" type="fake360_node" name="fake360_node" output="screen">  
+    <param name="map_frame" value="odom" />
+    <param name="base_frame" value="odin1_base_link" />
+    <param name="input_scan_topic" value="/scan" />
+    <param name="fake_scan_topic" value="/scan_360" />
+    <param name="map_topic" value="/fake_map" />
+    <param name="range_min" value="0.05" />
+    <param name="max_fake_range" value="4.5" />
+    <param name="output_points" value="360" />
+    <param name="resolution" value="0.05" />
+    <param name="width" value="400" />
+    <param name="height" value="400" />
+  </node>
+</launch>
