@@ -3,7 +3,7 @@
 </p>
 
 <div align="center">
-  <a href="https://ManifoldTehLtd.github.io/Odin-Nav-Stack-Webpage">
+  <a href="https://ManifoldTechLtd.github.io/Odin-Nav-Stack-Webpage">
   <img src='https://img.shields.io/badge/Webpage-OdinNavStack-blue' alt='webpage'></a>  
   <a href="https://www.apache.org/licenses/LICENSE-2.0">
   <img src='https://img.shields.io/badge/License-Apache2.0-green' alt='Apache2.0'></a>  
@@ -46,7 +46,7 @@ The code has been tested on:
 ## 1. Clone the Repository
 
 ``` shell
-git clone --depth 1 --recursive https://github.com/ManifoldTehLtd/Odin-Nav-Stack.git
+git clone --depth 1 --recursive https://github.com/ManifoldTechLtd/Odin-Nav-Stack.git
 ```
 
 ## 2. Install System Dependencies
