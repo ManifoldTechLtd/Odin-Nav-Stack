@@ -49,6 +49,77 @@ The code has been tested on:
 git clone --depth 1 --recursive https://github.com/ManifoldTechLtd/Odin-Nav-Stack.git
 ```
 
+The Odin1 driver may need to update:
+``` shell
+cd Odin-Nav-Stack/ros_ws/src/odin_ros_driver
+git fetch origin
+git checkout main
+git pull origin main
+```
+
+### Odin1 ROS driver modification
+
+We need to modify certain features of the odin1 ROS driver to adapt it for navigation, which may cause conflicts with your other programs.
+
+Please edit the `ros_ws/src/odin_ros_driver/include/host_sdk_sample.h`. Please note the location to modify. You should modify the ROS1 section, not the ROS2 section.
+
+1. Modifiy the `ns_to_ros_time` function:
+    ``` cpp
+    inline ros::Time ns_to_ros_time(uint64_t timestamp_ns) {
+        ros::Time t;
+        #ifdef ROS2
+            t.sec = static_cast<int32_t>(timestamp_ns / 1000000000);
+            t.nanosec = static_cast<uint32_t>(timestamp_ns % 1000000000);
+        #else
+            // t.sec = static_cast<uint32_t>(timestamp_ns / 1000000000);
+            // t.nsec = static_cast<uint32_t>(timestamp_ns % 1000000000);
+            return ros::Time::now();
+        #endif
+        return t;
+    }
+    ```
+
+2. Comment out the low-frequency TF transform in function `publishOdometry`:
+    ``` cpp
+    switch(odom_type) {
+        case OdometryType::STANDARD:
+            {
+            // geometry_msgs::TransformStamped transformStamped;
+            // transformStamped.header.stamp = msg.header.stamp;
+            // transformStamped.header.frame_id = "odom";
+            // transformStamped.child_frame_id = "odin1_base_link";
+            // transformStamped.transform.translation.x = msg.pose.pose.position.x;
+            // transformStamped.transform.translation.y = msg.pose.pose.position.y;
+            // transformStamped.transform.translation.z = msg.pose.pose.position.z;
+            // transformStamped.transform.rotation.x = msg.pose.pose.orientation.x;
+            // transformStamped.transform.rotation.y = msg.pose.pose.orientation.y;
+            // transformStamped.transform.rotation.z = msg.pose.pose.orientation.z;
+            // transformStamped.transform.rotation.w = msg.pose.pose.orientation.w;
+            // tf_broadcaster->sendTransform(transformStamped);
+            odom_publisher_.publish(msg);
+    ...
+    ```
+
+3. Add high-frequency TF transform publication in function `publishOdometry`:
+    ``` cpp
+    case OdometryType::HIGHFREQ:{
+        geometry_msgs::TransformStamped transformStamped;
+        transformStamped.header.stamp = msg.header.stamp;
+        transformStamped.header.frame_id = "odom";
+        transformStamped.child_frame_id = "odin1_base_link";
+        transformStamped.transform.translation.x = msg.pose.pose.position.x;
+        transformStamped.transform.translation.y = msg.pose.pose.position.y;
+        transformStamped.transform.translation.z = msg.pose.pose.position.z;
+        transformStamped.transform.rotation.x = msg.pose.pose.orientation.x;
+        transformStamped.transform.rotation.y = msg.pose.pose.orientation.y;
+        transformStamped.transform.rotation.z = msg.pose.pose.orientation.z;
+        transformStamped.transform.rotation.w = msg.pose.pose.orientation.w;
+        tf_broadcaster->sendTransform(transformStamped);
+        odom_highfreq_publisher_.publish(msg);
+        break;
+    }
+    ```
+
 ## 2. Install System Dependencies
 ``` shell
 export ROS_DISTRO=noetic
@@ -84,6 +155,7 @@ conda config --env --remove channels defaults
 conda config --env --add channels robostack-${ROS_DISTRO}
 mamba install -n neupan ros-${ROS_DISTRO}-desktop colcon-common-extensions catkin_tools rosdep ros-dev-tools -y
 mamba run -n neupan pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+pip install -e NeuPAN
 ```
 
 **For different Jetson users**: Replace the PyTorch install with a compatible .whl from [NVIDIA's Jeston PyTorch Page](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048).
@@ -92,10 +164,26 @@ mamba run -n neupan pip install torch==2.8.0 --index-url https://download.pytorc
 
 There are two methods for compiling workspaces: one involves using ROS within a conda environment, and the other involves ROS installed system-wide. If you need to compile using the system-installed ROS, ensure all conda environments are deactivated by running `mamba deactivate`.
 
+### System-installed ROS build
 ``` shell
 cd ros_ws
 source /opt/ros/${ROS_DISTRO}/setup.bash
 catkin_make -DCMAKE_BUILD_TYPE=Release
+```
+
+### Conda ROS build
+
+Some packages need to be installed before compile
+``` shell
+mamba activate neupan
+mamba install -c conda-forge -c robostack-noetic ros-noetic-pcl-ros ros-noetic-compressed-image-transport ros-noetic-compressed-depth-image-transport ros-noetic-image-transport
+```
+
+Compile:
+``` shell
+mamba activate neupan
+cd ros_ws
+catkin_make -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DPCL_VISUALIZATION=OFF -DQT_HOST_PATH=$CONDA_PREFIX
 ```
 
 ## 7. Set USB Rules for Odin1
@@ -162,30 +250,38 @@ Launch:
 roslaunch odin_ros_driver odin1_ros1.launch
 ```
 
-Verify TF tree: 
-``` shell
-rostopic hz /tf
-# or visualize TF tree in rqt: map → odom → odin1_base_link
-```
-Note: Relocalization may require manually initiating motion.
+Verify TF tree: visualize TF tree in rqt: map → odom → odin1_base_link
+
+Relocalization may require manually initiating motion.
 
 ## Navigation Modes
-### Standard ROS Navigation
+### Standard ROS Navigation (Not recommended, TODO)
 Use Nav1 and move-base. Please [install](https://wiki.ros.org/navigation) before running.
 ``` shell
 roslaunch navigation_planner navigation_planner.launch
 ```
 
-### Custom Planner
+### Custom Planner (Not recommended, TODO)
 Tune `global_planner.yaml` and `local_planner.yaml` in `ros_ws/src/model_planner`, then:
 ``` shell
 roslaunch model_planner model_planner.launch
 ```
 You can modify the code and replace it with your own custom algorithm.
 
-### End-to-End Neural Planner
+### End-to-End Neural Planner (Recommended)
 This is our recommended high-performance local planner; please refer to the paper: [NeuPAN](https://ieeexplore.ieee.org/document/10938329/).
 
+#### Model Training
+
+If you are not using Unitree Go2, please train the dune model. Modify the training configuration file `NeuPAN/example/dune_train/dune_train_*.py` based on the chassis type, then run:
+``` shell
+cd NeuPAN/example/dune_train
+python dune_train_*.py
+```
+
+Replace `*` with your chassis type. For more training detail, please refer to [here](https://github.com/hanruihua/NeuPAN?tab=readme-ov-file#dune-model-training-for-your-own-robot-with-a-specific-convex-geometry).
+
+#### Launch
 ``` shell
 # Terminal 1
 roslaunch map_planner whole.launch
@@ -194,7 +290,8 @@ roslaunch map_planner whole.launch
 mamba activate neupan
 python NeuPAN/neupan/ros/neupan_ros.py
 ```
-Use RViz to publish 2D Nav Goals.
+
+Use RViz to publish 2D Nav Goals. Verify relocalization by visualize TF tree in rqt before publishing goal.
 
 ## Object detection
 
@@ -315,6 +412,22 @@ Terminal 5:
 mamba activate neupan
 python scripts/VLN.py
 ```
+
+# FAQ
+
+## How to check the status of relocalization
+
+Open RViz, set `Global Options`-> `Fixed Frame` to map. In the bottom-left corner, select `Add` -> `By display type` -> `rviz` -> double-click `TF`. The appearance of the odom-map's coordinate axes and connections indicates successful relocalization.
+
+## Start or goal is occupied after publishing the goal
+
+If the start or end point is occupied, you can check the inflation map `/inflated_map` in RViz. The start and end points must lie outside the inflation area. Additionally, you can modify the inflation radius in `ros_ws/src/map_planner/launch/whole.launch:inflation_radius`.
+
+## Unable to stop near the target point
+
+This is a NeuPAN issue; there may be errors in reaching the target point. You can try increasing the `goal_tolerance` parameter in `ros_ws/src/map_planner/launch/whole.launch`.
+
+If you have any other questions, you can post them on GitHub Issues.
 
 # Troubleshooting
 

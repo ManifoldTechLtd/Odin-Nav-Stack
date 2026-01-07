@@ -94,7 +94,7 @@ while true; do
 done
 
 echo "Starting pointcloud_saver launch ..."
-roslaunch pointcloud_saver pointcloud_saver.launch &
+roslaunch pointcloud_saver pointcloud_saver.launch target_frame:=odom &
 pointcloud_saver_pid=$!
 
 sleep 3
@@ -165,6 +165,6 @@ else
   echo "You may need to manually change 'custom_map_mode' to 2 and in $odin_config_file and set map_file_name in ros_ws/src/map_planner/launch/whole.launch."
 fi
 
-echo "You need to change relocalization_map_abs_path in $odin_config_file before relocalization and restart odin driver."
+echo "You need to change relocalization_map_abs_path in $odin_config_file to the .bin file generated under odin_ros_driver/map before relocalization and restart odin driver."
 echo "Map recording and saving process completed."
 
