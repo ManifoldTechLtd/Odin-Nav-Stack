@@ -36,10 +36,12 @@
 
 ## What's New
 
-- **NeuPAN planner improvements**: heading-aware A\* search, dynamic obstacle memory (fake360), centered global paths via distance-graduated cost, and Smith predictor for MPC.
-- **Stuck-escape strategy**: position-based stuck detection, escape rotation toward the roomier side, and post-escape grace period for reliable bypass of dynamic obstacles.
-- **Docker deployment**: one-command launch on Jetson — see [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).
-- **Parameter tuning guide**: see [docs/TUNING_GUIDE.md](docs/TUNING_GUIDE.md).
+
+
+- **[2026-6-10] NeuPAN planner improvements**: heading-aware A\* search, dynamic obstacle memory (fake360), centered global paths via distance-graduated cost, and Smith predictor for MPC.
+- **[2026-6-8] Stuck-escape strategy**: position-based stuck detection, escape rotation toward the roomier side, and post-escape grace period for reliable bypass of dynamic obstacles.
+- **[2026-6-5] Docker deployment**: one-command launch on Jetson — see [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).
+- **[2026-6-1] Parameter tuning guide**: see [docs/TUNING_GUIDE.md](docs/TUNING_GUIDE.md).
 
 # Quick Start
 
@@ -66,11 +68,11 @@ git pull origin main
 
 ### NeuPAN submodule note
 
-The `NeuPAN/` submodule points to a fork ([`ManifoldTechLtd/NeuPAN`](https://github.com/ManifoldTechLtd/NeuPAN), branch `odin-stack-fixes`) with stack-specific bug fixes, stuck-escape, and tuning applied on top of upstream NeuPAN. To use the original upstream NeuPAN, replace the contents of the `NeuPAN/` directory with a clone from [`hanruihua/NeuPAN`](https://github.com/hanruihua/NeuPAN).
+The `NeuPAN/` submodule points to a fork ([`ManifoldTechLtd/NeuPAN`](https://github.com/ManifoldTechLtd/NeuPAN), branch `odin-stack-fixes`) with stack-specific bug fixes, stuck-escape, and tuning applied on top of upstream NeuPAN (branch `main` remains unchanged). To use the original upstream NeuPAN, replace the contents of the `NeuPAN/` directory with a clone from [`hanruihua/NeuPAN`](https://github.com/hanruihua/NeuPAN).
 
 ### Odin1 ROS driver modification
 
-We need to modify certain features of the odin1 ROS driver to adapt it for navigation, which may cause conflicts with your other programs.
+We need to modify certain features of the odin1 ROS driver to adapt it for navigation.
 
 **Prerequisites – Driver Configuration:**  
 Before proceeding, open `odin_ros_driver/config/control_command.yaml` and set:
@@ -150,6 +152,10 @@ conda install -n base -c conda-forge mamba
 ```
 
 ## 5. Create the NeuPAN Environment 
+
+At the beginning of this step, if you prefer not to install the environment directly on your computer — or if your system does not have ROS1 and you want a quick way to deploy and test — consider using the Docker setup instead. See [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md)
+
+
 ``` shell
 export ROS_DISTRO=noetic
 mamba create -n neupan -y
@@ -217,7 +223,7 @@ sudo udevadm trigger
 - Simple VLN (Vision-Language Navigation)
 
 > **Note on Onboard Compute Performance:**  
-> YOLO, VLM, and VLN features are computationally intensive. On embedded/onboard computers with limited resources, these modules should be deployed on a separate companion machine using a master-slave ROS configuration. This setup is left to the user to configure based on their hardware.
+> YOLO, VLM, and VLN features are computationally intensive. On onboard computers with limited resources, these modules should be deployed on a separate companion machine using a master-slave ROS configuration. This setup is left to the user to configure based on their hardware.
 
 ## Mapping and Relocalization with Odin1
 
