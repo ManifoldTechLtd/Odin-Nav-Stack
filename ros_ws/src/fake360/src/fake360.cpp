@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -50,6 +51,15 @@ Fake360Node::Fake360Node() : nh_(), pnh_("~"), tf_listener_(tf_buffer_) {
 
   ray_step_ = std::max(0.01, resolution * 0.5);
 
+  // Time-decay knobs. cell_decay_sec_ <= 0 disables the decay loop entirely
+  // (i.e. pure persistence, original behavior). decay_check_period_sec_ keeps
+  // the per-frame cost bounded by amortizing the full-grid scan.
+  cell_decay_sec_ = pnh_.param("cell_decay_sec", 6.0);
+  decay_check_period_sec_ = pnh_.param("decay_check_period_sec", 0.5);
+  cell_stamp_.assign(static_cast<size_t>(width) * static_cast<size_t>(height),
+                     ros::Time(0));
+  last_decay_check_ = ros::Time(0);
+
   map_pub_ = nh_.advertise<nav_msgs::OccupancyGrid>(map_topic_, 1, true);
   fake_scan_pub_ = nh_.advertise<sensor_msgs::LaserScan>(fake_scan_topic_, 1);
   scan_sub_ = nh_.subscribe(scan_topic_, 1, &Fake360Node::scanCallback, this);
@@ -68,7 +78,13 @@ void Fake360Node::scanCallback(const sensor_msgs::LaserScan::ConstPtr &msg) {
   tf2::Transform tf_map_laser;
   tf2::fromMsg(tf_msg.transform, tf_map_laser);
 
-  updateMap(*msg, tf_map_laser);
+  updateMap(*msg, tf_map_laser, msg->header.stamp);
+
+  // Expire occupied cells that haven't been refreshed for too long. Cells
+  // currently inside the LiDAR FOV got their stamp bumped by updateMap, so
+  // they survive; cells behind the robot do not, so they decay back to
+  // unknown after cell_decay_sec_.
+  decayStaleCells(msg->header.stamp);
 
   map_.header.stamp = msg->header.stamp;
   map_.info.map_load_time = msg->header.stamp;
@@ -78,7 +94,8 @@ void Fake360Node::scanCallback(const sensor_msgs::LaserScan::ConstPtr &msg) {
 }
 
 void Fake360Node::updateMap(const sensor_msgs::LaserScan &scan,
-                            const tf2::Transform &tf_map_laser) {
+                            const tf2::Transform &tf_map_laser,
+                            const ros::Time &stamp) {
   tf2::Vector3 origin = tf_map_laser.getOrigin();
   int origin_mx, origin_my;
   if (!worldToMap(origin.x(), origin.y(), origin_mx, origin_my)) {
@@ -110,14 +127,14 @@ void Fake360Node::updateMap(const sensor_msgs::LaserScan &scan,
       ray_cells.emplace_back(mx, my);
     }
 
-    setFree(ray_cells);
+    setFree(ray_cells, stamp);
 
     if (has_hit) {
       tf2::Vector3 hit_point =
           tf_map_laser * (direction * static_cast<double>(raw_range));
       int mx, my;
       if (worldToMap(hit_point.x(), hit_point.y(), mx, my)) {
-        setOccupied(mx, my);
+        setOccupied(mx, my, stamp);
       }
     }
   }
@@ -137,6 +154,16 @@ void Fake360Node::publishFakeScan(const ros::Time &stamp) {
   tf2::fromMsg(tf_msg.transform, tf_map_base);
   tf2::Vector3 origin = tf_map_base.getOrigin();
 
+  // Semantic of unobserved beams: report +inf (LiDAR "no return"). Before
+  // this fix, unknown cells (-1) and grid-exits caused the beam to report
+  // exactly max_fake_range_. NeuPAN's scan_callback filter
+  // `distance <= scan_range[1]` (=4.5) accepted those, so 305/360 beams
+  // became a fake 4.5m obstacle ring around the robot — destroying the
+  // whole point of the memory grid. +inf is rejected by scan_callback's
+  // upper-bound filter, so unobserved directions correctly contribute no
+  // obstacle points.
+  const float kNoReturn = std::numeric_limits<float>::infinity();
+
   sensor_msgs::LaserScan scan;
   scan.header.stamp = stamp;
   scan.header.frame_id = base_frame_;
@@ -146,7 +173,7 @@ void Fake360Node::publishFakeScan(const ros::Time &stamp) {
       (scan.angle_max - scan.angle_min) / static_cast<double>(output_points_);
   scan.range_min = range_min_;
   scan.range_max = max_fake_range_;
-  scan.ranges.assign(output_points_, static_cast<float>(max_fake_range_));
+  scan.ranges.assign(output_points_, kNoReturn);
 
   int origin_mx, origin_my;
   if (!worldToMap(origin.x(), origin.y(), origin_mx, origin_my)) {
@@ -161,28 +188,35 @@ void Fake360Node::publishFakeScan(const ros::Time &stamp) {
     tf2::Vector3 dir_base(std::cos(angle), std::sin(angle), 0.0);
     tf2::Vector3 dir_map = rotation * dir_base;
 
-    double measured = max_fake_range_;
+    // Default: no information along this ray (no occupied cell, no grid).
+    float measured = kNoReturn;
     for (double dist = range_min_; dist <= max_fake_range_; dist += ray_step_) {
       tf2::Vector3 point = origin + dir_map * dist;
       int mx, my;
       if (!worldToMap(point.x(), point.y(), mx, my)) {
-        measured = max_fake_range_;
+        // Ray exited the grid without seeing an obstacle: no info → leave
+        // `measured` at +inf so the beam is filtered out downstream.
         break;
       }
 
       int idx = index(mx, my);
       int value = map_.data[idx];
       if (value == 100) {
-        measured = dist;
+        // First occupied cell along the ray: that's the obstacle distance.
+        measured = static_cast<float>(dist);
         break;
       }
       if (value == -1) {
-        measured = max_fake_range_;
+        // First unknown cell along the ray: stop tracing (we have no
+        // information past this point). DO NOT pretend it is free at
+        // max_range — that creates a phantom obstacle ring around the
+        // robot.
         break;
       }
+      // value == 0 (free): keep walking the ray.
     }
 
-    scan.ranges[i] = static_cast<float>(std::min(measured, max_fake_range_));
+    scan.ranges[i] = measured;
   }
 
   fake_scan_pub_.publish(scan);
@@ -206,19 +240,46 @@ bool Fake360Node::worldToMap(double wx, double wy, int &mx, int &my) const {
   return true;
 }
 
-void Fake360Node::setFree(const std::vector<std::pair<int, int>> &cells) {
+void Fake360Node::setFree(const std::vector<std::pair<int, int>> &cells,
+                          const ros::Time &stamp) {
   for (const auto &cell : cells) {
     int idx = index(cell.first, cell.second);
     if (idx >= 0) {
       map_.data[idx] = 0;
+      cell_stamp_[idx] = stamp;
     }
   }
 }
 
-void Fake360Node::setOccupied(int mx, int my) {
+void Fake360Node::setOccupied(int mx, int my, const ros::Time &stamp) {
   int idx = index(mx, my);
   if (idx >= 0) {
     map_.data[idx] = 100;
+    cell_stamp_[idx] = stamp;
+  }
+}
+
+void Fake360Node::decayStaleCells(const ros::Time &now) {
+  if (cell_decay_sec_ <= 0.0) return;
+  if (last_decay_check_.isZero()) {
+    last_decay_check_ = now;
+    return;
+  }
+  if ((now - last_decay_check_).toSec() < decay_check_period_sec_) return;
+  last_decay_check_ = now;
+
+  const ros::Duration timeout(cell_decay_sec_);
+  // Only occupied cells decay. Free cells stay permanent so a once-observed
+  // corridor remains usable for fake-scan raycasts even if the dog never
+  // looks down it again. Decaying a cell back to unknown causes fake-scan
+  // rays through it to terminate at range_max ("unknown blocks the ray").
+  for (size_t i = 0; i < map_.data.size(); ++i) {
+    if (map_.data[i] != 100) continue;
+    if (cell_stamp_[i].isZero()) continue;
+    if ((now - cell_stamp_[i]) > timeout) {
+      map_.data[i] = -1;
+      cell_stamp_[i] = ros::Time(0);
+    }
   }
 }
 

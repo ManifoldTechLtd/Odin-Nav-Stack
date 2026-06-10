@@ -39,6 +39,14 @@ private:
   tf2_ros::TransformListener tf_listener_;
   geometry_msgs::PoseStamped last_goal_;
   bool have_goal_{false};
+  // (Jun 9): cap auto-replans at 1 per goal when enable_arrive_replan_ is
+  // false. When true (default), arriveCallback retriggers plan service on
+  // every /neupan/arrive while distance > goal_tolerance — this is the
+  // continuous local-avoidance mechanism that lets the robot keep maneuvering
+  // around dynamic obstacles after declaring path-arrive. Toggle via launch
+  // arg "enable_arrive_replan" (true = cascade ON, default; false = single).
+  bool replanned_for_current_goal_{false};
+  bool enable_arrive_replan_{true};
   double goal_tolerance_{0.3};
   std::string plan_service_name_{"/map_planner/plan"};
 };

@@ -34,6 +34,13 @@
 - **Modular, ROS1-Based Architecture**  
   Easy to extend, customize, and integrate into your own robotic applications.
 
+## What's New
+
+- **NeuPAN planner improvements**: heading-aware A\* search, dynamic obstacle memory (fake360), centered global paths via distance-graduated cost, and Smith predictor for MPC.
+- **Stuck-escape strategy**: position-based stuck detection, escape rotation toward the roomier side, and post-escape grace period for reliable bypass of dynamic obstacles.
+- **Docker deployment**: one-command launch on Jetson — see [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).
+- **Parameter tuning guide**: see [docs/TUNING_GUIDE.md](docs/TUNING_GUIDE.md).
+
 # Quick Start
 
 The code has been tested on:
@@ -57,29 +64,26 @@ git checkout main
 git pull origin main
 ```
 
+### NeuPAN submodule note
+
+The `NeuPAN/` submodule points to a fork ([`ManifoldTechLtd/NeuPAN`](https://github.com/ManifoldTechLtd/NeuPAN), branch `odin-stack-fixes`) with stack-specific bug fixes, stuck-escape, and tuning applied on top of upstream NeuPAN. To use the original upstream NeuPAN, replace the contents of the `NeuPAN/` directory with a clone from [`hanruihua/NeuPAN`](https://github.com/hanruihua/NeuPAN).
+
 ### Odin1 ROS driver modification
 
 We need to modify certain features of the odin1 ROS driver to adapt it for navigation, which may cause conflicts with your other programs.
 
+**Prerequisites – Driver Configuration:**  
+Before proceeding, open `odin_ros_driver/config/control_command.yaml` and set:
+
+``` yaml
+use_host_ros_time: 1
+```
+
+If this parameter does not exist in your config file, please contact us to update your driver and firmware.
+
 Please edit the `ros_ws/src/odin_ros_driver/include/host_sdk_sample.h`. Please note the location to modify. You should modify the ROS1 section, not the ROS2 section.
 
-1. Modifiy the `ns_to_ros_time` function:
-    ``` cpp
-    inline ros::Time ns_to_ros_time(uint64_t timestamp_ns) {
-        ros::Time t;
-        #ifdef ROS2
-            t.sec = static_cast<int32_t>(timestamp_ns / 1000000000);
-            t.nanosec = static_cast<uint32_t>(timestamp_ns % 1000000000);
-        #else
-            // t.sec = static_cast<uint32_t>(timestamp_ns / 1000000000);
-            // t.nsec = static_cast<uint32_t>(timestamp_ns % 1000000000);
-            return ros::Time::now();
-        #endif
-        return t;
-    }
-    ```
-
-2. Comment out the low-frequency TF transform in function `publishOdometry`:
+1. Comment out the low-frequency TF transform in function `publishOdometry`:
     ``` cpp
     switch(odom_type) {
         case OdometryType::STANDARD:
@@ -100,7 +104,7 @@ Please edit the `ros_ws/src/odin_ros_driver/include/host_sdk_sample.h`. Please n
     ...
     ```
 
-3. Add high-frequency TF transform publication in function `publishOdometry`:
+2. Add high-frequency TF transform publication in function `publishOdometry`:
     ``` cpp
     case OdometryType::HIGHFREQ:{
         geometry_msgs::TransformStamped transformStamped;
@@ -210,6 +214,10 @@ sudo udevadm trigger
 - Navigation
 - YOLO object detection
 - VLM scene explanation
+- Simple VLN (Vision-Language Navigation)
+
+> **Note on Onboard Compute Performance:**  
+> YOLO, VLM, and VLN features are computationally intensive. On embedded/onboard computers with limited resources, these modules should be deployed on a separate companion machine using a master-slave ROS configuration. This setup is left to the user to configure based on their hardware.
 
 ## Mapping and Relocalization with Odin1
 

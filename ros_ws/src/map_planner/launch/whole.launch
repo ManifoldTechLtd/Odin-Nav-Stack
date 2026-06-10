@@ -1,9 +1,9 @@
 <launch>
-  <!-- <include file="$(find foxglove_bridge)/launch/foxglove_bridge.launch" /> -->
+  <include file="$(find foxglove_bridge)/launch/foxglove_bridge.launch" />
   <!-- <include file="$(find odin_ros_driver)/launch/odin1_ros1.launch" /> -->
 
   <arg name="map_topic" default="/map" />
-  <arg name="map_file_name" default="awesome_map" />
+  <arg name="map_file_name" default="empty" />
   <arg name="goal_topic" default="/move_base_simple/goal" />
   <arg name="path_topic" default="/initial_path" />
   <arg name="service_name" default="/map_planner/plan" />
@@ -11,6 +11,41 @@
   <arg name="inflated_map_topic" default="/inflated_map" />
   <arg name="publish_path" default="true" />
   <arg name="arrive_topic" default="/neupan/arrive" />
+  <!-- Path B: Laplacian smoothing of the densified A* path.
+       0 disables (legacy polyline). 20 is a conservative default that
+       rounds 8-connected 45-deg corners while leaving straight paths
+       untouched. Increase to 30-50 for more aggressive rounding (helpful
+       when fake360 dynamic-obstacle bypass arcs introduce sharp kinks). -->
+  <arg name="smoothing_iterations" default="20" />
+  <!-- Cap on how far any single point may drift from its original A*
+       position over all smoothing passes. 0.20m keeps smoothing local,
+       won't take shortcuts that string-pull rejected. -->
+  <arg name="smoothing_max_deviation_m" default="0.20" />
+  <!-- fake360 builds a persistent 360-degree fake LaserScan from the 90-degree
+       LiDAR by accumulating an OccupancyGrid in odom and raycasting from the
+       robot. This gives NeuPAN obstacle memory for cells outside the live FOV
+       (fixes the "robot turns away from obstacle, then loses memory and turns
+       back into it" oscillation). Set use_fake360:=false to disable and fall
+       back to the raw /scan-only behavior. -->
+  <arg name="use_fake360" default="true" />
+  <!-- Cells that haven't been refreshed for this many seconds decay back to
+       unknown. Cells inside the live FOV are refreshed every scan and therefore
+       never decay. Tune up if dynamic obstacles leave persistent ghosts; tune
+       down for very dynamic environments. Set to 0.0 for pure persistence.
+
+       History:
+       - 6.0 (initial): too long — people walking past left smear obstacles for
+         6s, fake walls blocked the dog.
+       - 1.5: tracked walking humans well, but field bag (Jun 8 #2) showed
+         memory was too short — dog escaped a person, took 2s to react after
+         exit, and by then the person had decayed from the grid; MPC pulled
+         the dog right back into the (now unknown) person's last position.
+       - 3.0 (current): paired with the B1 fix (unknown -> +inf instead of
+         max_range). With B1 the phantom obstacle ring is gone, so we can
+         keep memory longer without poisoning the scan with stale walls.
+         3.0s @ 1m/s walking = 3m smear, still bounded; gives 3s of memory
+         past the live FOV. -->
+  <arg name="fake360_cell_decay_sec" default="3.0" />
 
   <!-- Map Server -->
   <node pkg="map_server" type="map_server" name="map_server" output="screen"
@@ -18,11 +53,48 @@
     <remap from="/map" to="$(arg map_topic)" />
   </node>
 
+  <!-- Path C: distance-to-obstacle graduated A* cost. Pushes paths away
+       from wall edges so the dog runs centered in corridors and doesn't
+       hug inside-corner walls at turns (which used to leave NeuPAN stuck
+       at corners, oscillating in place). Set obstacle_cost_weight=0 to
+       restore the pure step-distance A*.
+         weight=3.0  -> cells at the inflation boundary cost 4x more
+                        than cells at >= safe_distance from any wall
+         safe_distance=0.5m -> "target buffer" beyond the 0.25m inflation
+                        (so the dog tries to stay 0.75m from walls overall)
+         line_of_sight_safe_distance=0.25m -> string-pull is allowed to
+                        cut corners that stay >= 0.25m from walls. Half of
+                        safe_distance so straight corridors still simplify.
+  -->
+  <arg name="obstacle_cost_weight" default="3.0" />
+  <arg name="obstacle_cost_safe_distance" default="0.5" />
+  <arg name="line_of_sight_safe_distance" default="0.25" />
+
+  <!-- Heading-aware A* (Jun 9 g6 bag): bias the first ~radius_m of the
+       search toward the dog's current yaw so a replan triggered while it
+       faces e.g. left does not emit a path that initially heads right
+       (which NeuPAN then can't execute and re-enters stuck oscillation).
+         weight=2.0  -> at 180° off (cell directly behind the dog) the
+                       edge cost is multiplied by ~5x near start, fading
+                       linearly to 1x at radius_m. Aligned cells are 1x.
+         radius_m=1.0 -> bias acts only on the first ~1m of search; far
+                       cells/turns fall back to pure cost-A*.
+       Set weight=0 to disable (recovers prior behavior). -->
+  <arg name="start_heading_penalty_weight" default="2.0" />
+  <arg name="start_heading_penalty_radius_m" default="1.0" />
+
   <!-- Map A* Planner -->
   <node pkg="map_planner" type="map_planner" name="map_planner" output="screen">
     <param name="inflation_radius" value="$(arg inflation_radius)" />
     <param name="service_name" value="$(arg service_name)" />
     <param name="publish_path" value="$(arg publish_path)" />
+    <param name="smoothing_iterations" value="$(arg smoothing_iterations)" />
+    <param name="smoothing_max_deviation_m" value="$(arg smoothing_max_deviation_m)" />
+    <param name="obstacle_cost_weight" value="$(arg obstacle_cost_weight)" />
+    <param name="obstacle_cost_safe_distance" value="$(arg obstacle_cost_safe_distance)" />
+    <param name="line_of_sight_safe_distance" value="$(arg line_of_sight_safe_distance)" />
+    <param name="start_heading_penalty_weight" value="$(arg start_heading_penalty_weight)" />
+    <param name="start_heading_penalty_radius_m" value="$(arg start_heading_penalty_radius_m)" />
     <remap from="map" to="$(arg map_topic)" />
     <remap from="/move_base_simple/goal" to="$(arg goal_topic)" />
     <remap from="initial_path" to="$(arg path_topic)" />
@@ -31,9 +103,18 @@
 
   <!-- Goal State Machine -->
   <arg name="goal_tolerance" default="0.6" />
+  <!-- enable_arrive_replan: when true (default), every NeuPAN /neupan/arrive
+       triggers a fresh A* with the latest fake_map, allowing continuous
+       avoidance of dynamic obstacles (a person stepping into the path will
+       cause a re-route on the next arrive event). Set false to make the
+       state machine fire at most ONE auto-replan per published goal — useful
+       when debugging cascade behavior or when you want strict goal-driven
+       motion only. -->
+  <arg name="enable_arrive_replan" default="true" />
   <node pkg="map_planner" type="goal_state_machine" name="goal_state_machine" output="screen">
     <param name="plan_service" value="$(arg service_name)" />
     <param name="goal_tolerance" value="$(arg goal_tolerance)" />
+    <param name="enable_arrive_replan" value="$(arg enable_arrive_replan)" />
     <remap from="/neupan/arrive" to="$(arg arrive_topic)" />
     <remap from="/move_base_simple/goal" to="$(arg goal_topic)" />
   </node>
@@ -71,7 +152,8 @@
   </node>
 
   <!-- Fake 360 scan -->
-  <!-- <node pkg="fake360" type="fake360_node" name="fake360_node" output="screen">  
+  <node pkg="fake360" type="fake360_node" name="fake360_node" output="screen"
+        if="$(arg use_fake360)">
     <param name="map_frame" value="odom" />
     <param name="base_frame" value="odin1_base_link" />
     <param name="input_scan_topic" value="/scan" />
@@ -83,6 +165,7 @@
     <param name="resolution" value="0.05" />
     <param name="width" value="400" />
     <param name="height" value="400" />
-  </node> -->
+    <param name="cell_decay_sec" value="$(arg fake360_cell_decay_sec)" />
+  </node>
 </launch>
 

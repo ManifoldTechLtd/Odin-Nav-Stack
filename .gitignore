@@ -2,3 +2,8 @@
 bags/
 *.bag
 maps/
+.windsurf/
+dev_docs/
+.qoder/
+.agents/
+任务清单.md

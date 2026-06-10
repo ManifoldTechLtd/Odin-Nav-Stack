@@ -1,0 +1,64 @@
+# =============================================================================
+# Odin Navigation Stack — docker compose
+#
+# Usage (from the repo root):
+#   docker compose -f docker/docker-compose.yml up
+#
+# Tunable via the host filesystem WITHOUT rebuilding the image:
+#   docker/configs/control_command.yaml   -> mounted into odin_ros_driver
+#   docker/configs/config.yaml            -> mounted into NeuPAN ROS configs
+#   docker/configs/planner.yaml           -> mounted into NeuPAN ROS configs
+#   docker/configs/whole.launch           -> mounted into map_planner/launch
+#
+# Persistent map data (host <-> container, all three siblings):
+#   docker/maps/grid/                     -> grid maps  (.pgm + .yaml)
+#   docker/maps/relocalization/           -> Odin driver .bin map
+#   docker/maps/pcd/                      -> raw point clouds (.pcd)
+#
+# On first run, copy the in-repo defaults to docker/configs/ (see
+# docs/DOCKER_SETUP.md "Configuration overrides").
+# =============================================================================
+
+services:
+  odin-nav:
+    image: odin-nav:latest
+    build:
+      context: ..
+      # Set DOCKERFILE=docker/Dockerfile.cn for mainland China sources
+      dockerfile: ${DOCKERFILE:-docker/Dockerfile.global}
+    container_name: odin-nav
+
+    # ROS1 master discovery is simplest with host networking
+    network_mode: host
+
+    # USB device passthrough for Odin1
+    privileged: true
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+
+    # Optional Jetson GPU passthrough — uncomment if you want CUDA
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+    #   - NVIDIA_DRIVER_CAPABILITIES=all
+
+    environment:
+      - ROS_MASTER_URI=http://localhost:11311
+      - ROS_HOSTNAME=localhost
+
+    volumes:
+      # Per-deploy config overrides (see DOCKER_SETUP.md)
+      - ./configs/control_command.yaml:/opt/odin/ros_ws/src/odin_ros_driver/config/control_command.yaml:ro
+      - ./configs/config.yaml:/opt/odin/NeuPAN/neupan/ros/configs/config.yaml:ro
+      - ./configs/planner.yaml:/opt/odin/NeuPAN/neupan/ros/configs/planner.yaml:ro
+      - ./configs/whole.launch:/opt/odin/ros_ws/src/map_planner/launch/whole.launch:ro
+      # Persistent map data — three sibling subdirs, all on the host so they
+      # survive container restarts. Set the matching paths inside
+      # control_command.yaml (see DOCKER_SETUP.md "Map persistence"):
+      #   mapping_result_dest_dir: "/opt/odin/maps/relocalization"
+      #   relocalization_map_abs_path: "/opt/odin/maps/relocalization/<name>.bin"
+      - ./maps/grid:/opt/odin/ros_ws/src/map_planner/maps
+      - ./maps/relocalization:/opt/odin/maps/relocalization
+      - ./maps/pcd:/opt/odin/ros_ws/src/pcd2pgm/maps
+
+    restart: unless-stopped

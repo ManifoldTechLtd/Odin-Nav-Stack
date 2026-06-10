@@ -29,12 +29,17 @@ public:
 
 private:
   void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
-  void updateMap(const sensor_msgs::LaserScan& scan, const tf2::Transform& tf_map_laser);
+  void updateMap(const sensor_msgs::LaserScan& scan, const tf2::Transform& tf_map_laser,
+                 const ros::Time& stamp);
   void publishFakeScan(const ros::Time& stamp);
   bool worldToMap(double wx, double wy, int& mx, int& my) const;
-  void setFree(const std::vector<std::pair<int, int>>& cells);
-  void setOccupied(int mx, int my);
+  void setFree(const std::vector<std::pair<int, int>>& cells, const ros::Time& stamp);
+  void setOccupied(int mx, int my, const ros::Time& stamp);
   int index(int mx, int my) const;
+  // Cells that haven't been refreshed for cell_decay_sec_ are reset to unknown.
+  // Only occupied cells decay; free cells are kept permanently so once a corridor
+  // has been observed clear it stays usable for fake-scan raycasts.
+  void decayStaleCells(const ros::Time& now);
 
   ros::NodeHandle nh_;
   ros::NodeHandle pnh_;
@@ -55,4 +60,12 @@ private:
   std::string scan_topic_;
   std::string fake_scan_topic_;
   std::string map_topic_;
+
+  // Per-cell last-update timestamps. Refreshed every time a cell is touched by
+  // setFree/setOccupied. Used by decayStaleCells to expire cells that fell out
+  // of the LiDAR FOV.
+  std::vector<ros::Time> cell_stamp_;
+  double cell_decay_sec_;          // <= 0 disables decay
+  double decay_check_period_sec_;  // how often decayStaleCells actually scans
+  ros::Time last_decay_check_;
 };

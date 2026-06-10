@@ -1,0 +1,49 @@
+# Build artefacts (catkin)
+ros_ws/build/
+ros_ws/devel/
+ros_ws/install/
+ros_ws/logs/
+
+# Python build artefacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+**/.pytest_cache/
+
+# Workspaces / venvs / conda envs
+ros_ws/venvs/
+NeuPAN/venv/
+.venv/
+
+# Bag files / logs / huge data
+**/*.bag
+**/*.bag.active
+**/*.pcd
+**/*.png
+**/*.jpg
+**/*.tiff
+bags/
+logs/
+*.log
+
+# Editor / OS junk
+.git/
+.gitignore
+.gitmodules
+.DS_Store
+.vscode/
+.idea/
+.windsurf/
+
+# Internal docs that should not bloat the image
+dev_docs/
+任务清单.md
+
+# YOLO / VLM / VLN packages — not needed for the nav-only image
+ros_ws/src/yolo_ros/
+ros_ws/src/yolov5/
+ros_ws/src/odin_vlm_terminal/
+yolov5/
+scripts/VLN.py
+scripts/str_cmd_control.py

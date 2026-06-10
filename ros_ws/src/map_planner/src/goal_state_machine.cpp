@@ -21,6 +21,14 @@ GoalStateMachine::GoalStateMachine(ros::NodeHandle& nh, ros::NodeHandle& private
       tf_listener_(tf_buffer_) {
   private_nh_.param("goal_tolerance", goal_tolerance_, goal_tolerance_);
   private_nh_.param("plan_service", plan_service_name_, plan_service_name_);
+  // (Jun 9) When true (default): every NeuPAN /neupan/arrive triggers a fresh
+  // plan service call as long as robot is farther than goal_tolerance_ from
+  // last_goal_. This is the continuous local-avoidance behavior — each
+  // arrive/stuck causes a fresh A* with the latest fake_map snapshot, which
+  // routes around any newly-detected dynamic obstacle (e.g. a person stepping
+  // into the path). When false: only the first arrive triggers a replan; user
+  // must publish a fresh /move_base_simple/goal to re-enable auto-replan.
+  private_nh_.param("enable_arrive_replan", enable_arrive_replan_, enable_arrive_replan_);
   arrive_sub_ = nh_.subscribe("/neupan/arrive", 1, &GoalStateMachine::arriveCallback, this);
   goal_sub_ = nh_.subscribe("/move_base_simple/goal", 1, &GoalStateMachine::goalCallback, this);
   plan_client_ = nh_.serviceClient<map_planner::PlanPath>(plan_service_name_);
@@ -41,11 +49,24 @@ void GoalStateMachine::goalCallback(const geometry_msgs::PoseStampedConstPtr& go
   }
   last_goal_ = map_goal;
   have_goal_ = true;
+  // Bug fix (Jun 9): a fresh goal allows one new auto-replan on arrive.
+  // See replanned_for_current_goal_ doc in goal_state_machine.h.
+  replanned_for_current_goal_ = false;
 }
 
 void GoalStateMachine::arriveCallback(const std_msgs::EmptyConstPtr&) {
   if (!have_goal_) {
     ROS_WARN_THROTTLE(2.0, "Arrival received without a stored goal.");
+    return;
+  }
+  // (Jun 9) When auto-replan cascade is disabled, fire at most one replan
+  // per published goal. When enabled (default), every arrive triggers a
+  // fresh A* with the latest fake_map -> routes around dynamic obstacles
+  // that appear after the initial plan.
+  if (!enable_arrive_replan_ && replanned_for_current_goal_) {
+    ROS_INFO_THROTTLE(2.0,
+        "Auto-replan disabled and already replanned once for current goal; "
+        "ignoring arrive. Publish new /move_base_simple/goal to re-enable.");
     return;
   }
   geometry_msgs::PoseStamped current_pose;
@@ -68,7 +89,16 @@ void GoalStateMachine::arriveCallback(const std_msgs::EmptyConstPtr&) {
   map_planner::PlanPath srv;
   srv.request.goal = last_goal_;
   if (plan_client_.call(srv)) {
-    ROS_INFO("Requested replanning toward goal (distance %.2f m).", distance);
+    replanned_for_current_goal_ = true;
+    if (enable_arrive_replan_) {
+      ROS_INFO("Auto-replan toward goal (distance %.2f m). Cascade ON, "
+               "will retrigger on next arrive while distance > %.2f m.",
+               distance, goal_tolerance_);
+    } else {
+      ROS_INFO("Auto-replan toward goal (distance %.2f m). Cascade OFF, "
+               "no further auto-replan until next /move_base_simple/goal.",
+               distance);
+    }
   } else {
     ROS_WARN("Failed to call plan service.");
   }

@@ -7,4 +7,5 @@
 	branch = main
 [submodule "NeuPAN"]
 	path = NeuPAN
-	url = https://github.com/ManifoldTehLtd/NeuPAN
+	url = git@github.com:ManifoldTechLtd/NeuPAN.git
+	branch = odin-stack-fixes

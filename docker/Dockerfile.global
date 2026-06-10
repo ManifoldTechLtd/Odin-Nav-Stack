@@ -1,0 +1,105 @@
+# =============================================================================
+# Odin Navigation Stack — Docker image (global apt/pip sources)
+#
+# Targets: NVIDIA Jetson with L4T R35.x (Jetpack 5.1.x; Orin Nano / AGX).
+# Base provides ROS Noetic (Python 3.8) + PyTorch (with CUDA) on Ubuntu 20.04.
+# NeuPAN requires Python 3.10+, so we install miniforge and create a `neupan`
+# conda env to mirror the README's mamba-based workflow.
+#
+# Build:
+#   docker build -f docker/Dockerfile.global -t odin-nav:latest .
+#
+# For mainland China users:
+#   docker build -f docker/Dockerfile.cn -t odin-nav:latest .
+# =============================================================================
+
+ARG BASE_IMAGE=dustynv/ros:noetic-pytorch-l4t-r35.4.1
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROS_DISTRO=noetic \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    CONDA_DIR=/opt/conda \
+    PATH=/opt/conda/bin:/opt/conda/envs/neupan/bin:${PATH}
+
+# -----------------------------------------------------------------------------
+# 1. System dependencies (matches README §2)
+# -----------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        wget \
+        curl \
+        ca-certificates \
+        sudo \
+        libpcl-dev \
+        libeigen3-dev \
+        libopencv-dev \
+        ros-${ROS_DISTRO}-tf2-ros \
+        ros-${ROS_DISTRO}-tf2-geometry-msgs \
+        ros-${ROS_DISTRO}-cv-bridge \
+        ros-${ROS_DISTRO}-tf2-eigen \
+        ros-${ROS_DISTRO}-pcl-ros \
+        ros-${ROS_DISTRO}-move-base \
+        ros-${ROS_DISTRO}-dwa-local-planner \
+    && rm -rf /var/lib/apt/lists/*
+
+# -----------------------------------------------------------------------------
+# 2. Miniforge + `neupan` python 3.10 env (matches README §5)
+# -----------------------------------------------------------------------------
+RUN wget --quiet -O /tmp/miniforge.sh \
+        https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh \
+    && bash /tmp/miniforge.sh -b -p ${CONDA_DIR} \
+    && rm /tmp/miniforge.sh \
+    && conda create -n neupan -y python=3.10 \
+    && conda clean -afy
+
+# -----------------------------------------------------------------------------
+# 3. Copy source and install NeuPAN deps
+# -----------------------------------------------------------------------------
+WORKDIR /opt/odin
+COPY NeuPAN /opt/odin/NeuPAN
+
+# torch is provided by the base image's system Python; for the conda env we
+# install CPU torch (GPU torch on Jetson requires JetPack-specific wheels;
+# users who want GPU should switch the conda env's torch to a Jetson wheel).
+RUN /opt/conda/envs/neupan/bin/pip install --no-cache-dir \
+        torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu \
+    && /opt/conda/envs/neupan/bin/pip install --no-cache-dir -e /opt/odin/NeuPAN
+
+# -----------------------------------------------------------------------------
+# 4. Build the ROS workspace
+#    Only the nav-relevant packages are copied (no YOLO / VLM / VLN).
+# -----------------------------------------------------------------------------
+COPY ros_ws/src/CMakeLists.txt              /opt/odin/ros_ws/src/CMakeLists.txt
+COPY ros_ws/src/odin_ros_driver             /opt/odin/ros_ws/src/odin_ros_driver
+COPY ros_ws/src/map_planner                 /opt/odin/ros_ws/src/map_planner
+COPY ros_ws/src/fake360                     /opt/odin/ros_ws/src/fake360
+COPY ros_ws/src/pcd2pgm                     /opt/odin/ros_ws/src/pcd2pgm
+COPY ros_ws/src/pointcloud_saver            /opt/odin/ros_ws/src/pointcloud_saver
+COPY scripts                                /opt/odin/scripts
+
+RUN bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && cd /opt/odin/ros_ws \
+    && catkin_make -DCMAKE_BUILD_TYPE=Release"
+
+# -----------------------------------------------------------------------------
+# 5. Persistent map mount points (see docker-compose.yml "Persistent map data")
+# -----------------------------------------------------------------------------
+RUN mkdir -p /opt/odin/maps/relocalization \
+             /opt/odin/maps/grid \
+             /opt/odin/maps/pcd
+
+# -----------------------------------------------------------------------------
+# 6. Entrypoint
+# -----------------------------------------------------------------------------
+COPY docker/entrypoint.sh /opt/odin/entrypoint.sh
+RUN chmod +x /opt/odin/entrypoint.sh
+
+ENV ROS_MASTER_URI=http://localhost:11311 \
+    ROS_HOSTNAME=localhost
+
+ENTRYPOINT ["/opt/odin/entrypoint.sh"]
+CMD ["launch"]
