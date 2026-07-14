@@ -2,6 +2,10 @@
   <h2 align="center">Odin Navigation Stack</h2>
 </p>
 
+<p align="center">
+  <img src="img/odin-nav-stack-label.png" alt="Odin Navigation Stack" width="200" />
+</p>
+
 <div align="center">
   <a href="https://ManifoldTechLtd.github.io/Odin-Nav-Stack-Webpage">
   <img src='https://img.shields.io/badge/Webpage-OdinNavStack-blue' alt='webpage'></a>  
@@ -36,8 +40,9 @@
 
 ## What's New
 
+- **[2026-7-14] In-place obstacle avoidance & detailed tuning guide**: Added in-place obstacle avoidance and modified the TUNING_GUIDE.md document to help developers debug and fine-tune. Demo below (black-head Go2 = autonomous via this repo; white-head Go2 = teleoperated).
 
-
+  ![In-place obstacle avoidance demo](img/in_place_obstacle_avoidance.gif)
 - **[2026-6-10] NeuPAN planner improvements**: heading-aware A\* search, dynamic obstacle memory (fake360), centered global paths via distance-graduated cost, and Smith predictor for MPC.
 - **[2026-6-8] Stuck-escape strategy**: position-based stuck detection, escape rotation toward the roomier side, and post-escape grace period for reliable bypass of dynamic obstacles.
 - **[2026-6-5] Docker deployment**: one-command launch on Jetson — see [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).
@@ -68,7 +73,7 @@ git pull origin main
 
 ### NeuPAN submodule note
 
-The `NeuPAN/` submodule points to a fork ([`ManifoldTechLtd/NeuPAN`](https://github.com/ManifoldTechLtd/NeuPAN), branch `odin-stack-fixes`) with stack-specific bug fixes, stuck-escape, and tuning applied on top of upstream NeuPAN (branch `main` remains unchanged). To use the original upstream NeuPAN, replace the contents of the `NeuPAN/` directory with a clone from [`hanruihua/NeuPAN`](https://github.com/hanruihua/NeuPAN).
+The `NeuPAN/` submodule points to a fork ([`ManifoldTechLtd/NeuPAN`](https://github.com/ManifoldTechLtd/NeuPAN), branch `odin-stack-fixes`) with stack-specific fixes, stuck-escape, and tuning applied on top of upstream NeuPAN (branch `main` remains unchanged). To use the original upstream NeuPAN, replace the contents of the `NeuPAN/` directory with a clone from [`hanruihua/NeuPAN`](https://github.com/hanruihua/NeuPAN).
 
 ### Odin1 ROS driver modification
 

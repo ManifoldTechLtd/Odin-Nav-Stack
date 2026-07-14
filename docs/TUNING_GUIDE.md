@@ -1,6 +1,6 @@
 # Tuning Guide
 
-Practical reference for tuning the Odin Navigation Stack (global A\*, dynamic obstacle memory, NeuPAN MPC). Use this guide to look up what a parameter does, in what range to move it, and which knob to reach for first when the robot misbehaves.
+Practical reference for tuning the Odin Navigation Stack (global planning, dynamic obstacle memory, NeuPAN). Use this guide to look up what a parameter does, in what range to move it, and which knob to reach for first when the robot misbehaves.
 
 ## Overview
 
@@ -42,7 +42,8 @@ After editing:
 | `max_acce` | `[a, α]` | `[0.5, 0.7]` | Acceleration saturation. |
 | `length` / `width` | float | 0.7 / 0.35 | Robot footprint, used by NeuPAN for clearance checks. |
 
-> These reflect physical robot capability; treat them as platform constants, not tuning knobs.
+> Length and width reflect physical robot capability; treat them as platform constants, not tuning knobs.
+> If you need to modify the length and width parameters, you also need to retrain the DUNE checkpoint.
 
 #### Tracking and avoidance weights (`adjust:`)
 
@@ -55,7 +56,6 @@ These are the day-to-day tuning knobs. Each entry is a relative weight in the MP
 | `p_u` | float | 1.0 | Penalty for `v` deviation from `ref_speed`. Raise if the robot won't reach target speed. |
 | `p_w` | float | 0.8 | Penalty on absolute `omega`. Raise to dampen wobble. |
 | `p_w_cross` | float | 0.0 | Cross-cycle `omega` anchoring. Anti-limit-cycle weapon, start at 1.0 if `p_w` alone isn't enough. |
-| `p_dw` | float | 0.0 | Penalty on intra-horizon `omega` rate-of-change. |
 | `eta` | float | 12.0 | Reward for routing around obstacles. Higher = actively detours. |
 | `ro_obs` | float | 400 | Repulsive strength of obstacle points. |
 | `d_max` | float | 0.25 | Lateral obstacle inflation (m). Higher = wider buffer (struggles in narrow corridors). |
@@ -106,7 +106,6 @@ These are the day-to-day tuning knobs. Each entry is a relative weight in the MP
 | `disp_threshold_m` | float | 0.05 | Frame-to-frame displacement below which the robot is considered "not moving". |
 | `front_clear_threshold_m` | float | 0.6 | Forward clearance below which "stuck" requires obstacle proximity. |
 | `stuck_frames` | int | 15 | Consecutive frames matching the above before full backup-rotate kicks in. |
-| `escape_rotation_rad` | float | 1.05 | Target rotation angle during escape (~60°). |
 | `early_replan_enable` | bool | true | Trigger an early A\* replan via `/neupan/arrive` at low stuck count, **before** the full escape. |
 | `early_replan_trigger_frames` | int | 5 | Stuck-frame count that triggers the early replan. |
 | `early_replan_cooldown_sec` | float | 2.0 | Minimum seconds between two early replans. |
@@ -118,7 +117,7 @@ These are the day-to-day tuning knobs. Each entry is a relative weight in the MP
 | Argument | Type | Default | Description |
 |---|---|---|---|
 | `inflation_radius` | float | 0.25 | Static-map inflation radius (m). Paths cannot enter cells closer than this to a wall. |
-| `obstacle_cost_weight` | float | 3.0 | "Hug-the-centre" multiplier. 0 = pure step-distance A\*. |
+| `obstacle_cost_weight` | float | 3.0 | "Hug-the-centre" multiplier. 0 = pure A\*. |
 | `obstacle_cost_safe_distance` | float | 0.5 | Distance beyond which there is no extra cost (m). |
 | `line_of_sight_safe_distance` | float | 0.25 | String-pull may shortcut corners that stay this far from walls (m). |
 | `smoothing_iterations` | int | 20 | Laplacian smoothing passes. 0 disables. |
@@ -139,6 +138,24 @@ These are the day-to-day tuning knobs. Each entry is a relative weight in the MP
 |---|---|---|---|
 | `goal_tolerance` | float | 0.6 | Replan trigger distance (m). |
 | `enable_arrive_replan` | bool | true | If true, every NeuPAN arrive triggers a fresh A\* — required for continuous dynamic-obstacle bypass. |
+
+#### Pointcloud to LaserScan (pc_to_scan)
+
+Slices 3D pointcloud into a 2D LaserScan for fake360 and NeuPAN. Adjust these parameters when the Odin sensor is mounted at a different height.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `target_frame` | string | `odin1_base_link` | Reference frame for the laser scan; do not change |
+| `transform_tolerance` | float | 0.1 | TF lookup tolerance (s) |
+| `min_height` | float | 0.0 | Minimum slice height (m), relative to `target_frame` origin |
+| `max_height` | float | 0.3 | Maximum slice height (m), relative to `target_frame` origin |
+| `angle_min` | float | -0.7853 | Scan start angle (rad), -45° |
+| `angle_max` | float | 0.7853 | Scan end angle (rad), +45° |
+| `angle_increment` | float | 0.017 | Angular resolution (rad), ~1° |
+| `scan_time` | float | 0.1 | Scan period (s) |
+| `range_min` | float | 0.2 | Minimum forward range (m), filters self-body noise |
+| `range_max` | float | 5.0 | Maximum forward range (m) |
+
 
 ## Tuning Procedure
 
@@ -205,22 +222,4 @@ Requirements:
 - Poses are assumed to be in the `map` frame.
 - `pose.position.x/y` are required. `pose.orientation` is used only when `include_initial_path_direction: True`; otherwise yaw is inferred from neighbouring points.
 
-### Disable the in-stack A\* and use only an external source
-
-Comment out the `<!-- Map A* Planner -->` and `<!-- Goal State Machine -->` node blocks in `whole.launch`, then set `topic.path` (or `topic.waypoints` / `topic.goal`) in `config.yaml` to your source. NeuPAN always tracks the most recent message; multiple sources can coexist if upstream coordinates timing.
-
-## Common Issues
-
-| Symptom | First place to look | Adjust |
-|---|---|---|
-| Wobble in straight lines | `planner.yaml` → `p_w`, `q_theta` | `p_w` ↑, `q_theta` ≈ 1.0 |
-| Hugs inside corner walls | `whole.launch` → `obstacle_cost_*` | `obstacle_cost_weight` ↑, `safe_distance` ↑ |
-| Won't bypass a stationary person | `whole.launch` → replan + fake360 | `enable_arrive_replan: true`, `fake360_cell_decay_sec` ↓ |
-| Replans into the wrong direction | `whole.launch` → heading penalty | `start_heading_penalty_weight` ↑ |
-| Stuck oscillation in narrow doorway | `planner.yaml` → `d_max`, `inflation_radius` | both ↓ slightly |
-| Robot stops far from goal | `planner.yaml` → `ipath.arrive_threshold` | ↑ |
-| `cmd_v` clipped below `ref_speed` | `planner.yaml` → `p_u` | ↑ |
-| Phantom obstacles in fake360 | `whole.launch` → `fake360_cell_decay_sec` | ↓ |
-| Path enters inflation zone | `whole.launch` → `inflation_radius` | ↑ |
-
-When in doubt, change one parameter at a time and record a short bag with `cmd_vel`, `odometry`, and `initial_path` to verify the effect before stacking changes.
+When in doubt, change one parameter at a time and record a short bag with `cmd_vel`, `odometry`, and `initial_path` and any other topics you needed to verify the effect before stacking changes.
