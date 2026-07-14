@@ -94,7 +94,7 @@ Please edit the `ros_ws/src/odin_ros_driver/include/host_sdk_sample.h`. Please n
     ``` cpp
     switch(odom_type) {
         case OdometryType::STANDARD:
-            {
+            { 
             // geometry_msgs::TransformStamped transformStamped;
             // transformStamped.header.stamp = msg.header.stamp;
             // transformStamped.header.frame_id = "odom";
