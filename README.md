@@ -50,7 +50,7 @@
 
 ## Related Work
 
-- **[SRU × Odin1: Mapless Navigation with Spatially-Enhanced Recurrent Memory](https://github.com/ManifoldTechLtd/Odin-Nav-Stack)** — Odin1 Mapless Navigation: successfully deployed a cutting-edge paper on Odin1 in half a day.
+- **[SRU × Odin1: Mapless Navigation with Spatially-Enhanced Recurrent Memory](https://github.com/ManifoldTechLtd/SRU-Odin)** — Odin1 Mapless Navigation: successfully deployed a cutting-edge paper on Odin1 in half a day.
 - **[ManifoldTech Real2Sim Tutorial](https://github.com/ManifoldTechLtd/MT-Real2Sim-Tutorial)** — Transform the real world into a simulated environment of Issac Sim using Q9000.
 
 # Quick Start
