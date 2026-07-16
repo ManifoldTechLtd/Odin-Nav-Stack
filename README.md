@@ -48,6 +48,11 @@
 - **[2026-6-5] Docker deployment**: one-command launch on Jetson — see [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).
 - **[2026-6-1] Parameter tuning guide**: see [docs/TUNING_GUIDE.md](docs/TUNING_GUIDE.md).
 
+## Related Work
+
+- **[SRU × Odin1: Mapless Navigation with Spatially-Enhanced Recurrent Memory](https://github.com/ManifoldTechLtd/Odin-Nav-Stack)** — Odin1 Mapless Navigation: successfully deployed a cutting-edge paper on Odin1 in half a day.
+- **[ManifoldTech Real2Sim Tutorial](https://github.com/ManifoldTechLtd/MT-Real2Sim-Tutorial)** — Transform the real world into a simulated environment of Issac Sim using Q9000.
+
 # Quick Start
 
 The code has been tested on:
