@@ -40,6 +40,7 @@
 
 ## What's New
 
+- **[2026-7-21] Go2 Odin mount stl file**: Find it at: https://github.com/ManifoldTechLtd/SRU-Odin/blob/main/Deployment/3DPrints/odin1_mount.stl
 - **[2026-7-14] In-place obstacle avoidance & detailed tuning guide**: Added in-place obstacle avoidance and modified the TUNING_GUIDE.md document to help developers debug and fine-tune. Demo below (black-head Go2 = autonomous via this repo; white-head Go2 = teleoperated).
 
   ![In-place obstacle avoidance demo](img/in_place_obstacle_avoidance.gif)
