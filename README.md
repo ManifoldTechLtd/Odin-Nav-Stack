@@ -47,7 +47,7 @@
 - **[2026-6-10] NeuPAN planner improvements**: heading-aware A\* search, dynamic obstacle memory (fake360), centered global paths via distance-graduated cost, and Smith predictor for MPC.
 - **[2026-6-8] Stuck-escape strategy**: position-based stuck detection, escape rotation toward the roomier side, and post-escape grace period for reliable bypass of dynamic obstacles.
 - **[2026-6-5] Docker deployment**: one-command launch on Jetson — see [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md).
-- **[2026-6-1] Parameter tuning guide**: see [docs/TUNING_GUIDE.md](docs/TUNING_GUIDE.md).
+- **[2026-6-1] Parameter tuning guide**: see [docs/TUNING_GUIDE.md](docs/TUNING_GUIDE.md) and the [Chinese version](docs/TUNING_GUIDE_中文版.md).
 
 ## Related Work
 
@@ -305,6 +305,8 @@ python dune_train_*.py
 ```
 
 Replace `*` with your chassis type. For more training detail, please refer to [here](https://github.com/hanruihua/NeuPAN?tab=readme-ov-file#dune-model-training-for-your-own-robot-with-a-specific-convex-geometry).
+
+Different chassis types require retraining the DUNE network and re-tuning the parameters. If the navigation performance is not satisfactory, please re-tune `NeuPAN/neupan/ros/configs/planner.yaml` and `NeuPAN/neupan/ros/configs/config.yaml`.
 
 #### Launch
 ``` shell

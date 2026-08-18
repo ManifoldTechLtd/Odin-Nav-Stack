@@ -1,6 +1,6 @@
 <launch>
   <arg name="cloud_topic" default="/odin1/cloud_slam" />
-  <arg name="target_frame" default="map" />
+  <arg name="target_frame" default="odom" />
   <arg name="save_dir" default="$(find pcd2pgm)/maps" />
   <arg name="max_points" default="10000000" />
   <arg name="auto_publish" default="true" />

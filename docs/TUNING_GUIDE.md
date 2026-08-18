@@ -98,17 +98,111 @@ These are the day-to-day tuning knobs. Each entry is a relative weight in the MP
 | `refresh_initial_path` | bool | true | Reload the path on every new message; set false to load only once. |
 | `include_initial_path_direction` | bool | false | Use `pose.orientation` from the path; otherwise infer yaw from neighbouring points. |
 
-#### Stuck-escape (`stuck_escape:`)
+#### Smith predictor (`smith_predictor:`)
+
+Compensates the cmd-to-effect delay: the MPC plans from the state the robot is *predicted* to be in after `tau = solve_time + fixed_lag`, instead of its current pose. Tune when commands feel phase-lagged (overshoot at corners, late reactions).
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `enable` | bool | true | Master switch. Disable to plan from the measured pose (legacy behaviour). |
+| `fixed_lag_sec` | float | 0.02 | Fixed actuator lag (s) added to `tau`. Raise if the base is slow to execute commands. |
+| `use_solve_time` | bool | true | Add the last MPC solve time to `tau`. Keep on unless solve time is very jittery. |
+| `max_tau_sec` | float | 0.15 | Upper cap on `tau` (s). Prevents over-prediction after an occasional slow solve. |
+| `velocity_source` | string | `"odom"` | Velocity used for the forward roll: `odom` (falls back to last cmd when odom is stale/missing) or `cmd`. |
+
+#### Scan preprocessing
+
+Filters applied to the incoming LaserScan before points are fed to the planner.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `scan_range` | `[min, max]` | `[0.2, 4.5]` | Keep only returns within this distance band (m). Raise `min` to reject self-body hits; lower `max` to shrink the obstacle horizon. |
+| `scan_angle` | `[min, max]` | `[-3.14, 3.14]` | Keep only beams within this angular band (rad). Narrow it to ignore rear returns. |
+| `scan_downsample` | int | 1 | Keep every N-th beam. Raise to cut CPU load on dense scans. |
+| `flip_angle` | bool | false | Reverse the beam angle order; set true only if the scan is mirrored. |
+
+#### Visualization markers
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `marker_size` | float | 0.05 | Cube edge length (m) of DUNE/NRMP point markers in RViz. Cosmetic only. |
+| `marker_z` | float | 0.3 | Height (m) of the robot footprint marker. Cosmetic only. |
+
+#### Command smoothing
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `cmd_w_lpf_alpha` | float | 0.0 | First-order low-pass on `omega` before rate limiting: `w = a*prev + (1-a)*new`. 0 disables; try 0.3-0.7 to dampen jerky rotation, at the cost of turn responsiveness. |
+
+#### Pre-alignment (`prealign:`)
+
+Optional rotate-in-place override: when the heading error to the path is large *and* a front obstacle is close, the robot stops and turns toward the path before handing control back to NeuPAN (with hysteresis on exit). Enable if the robot enters doorways/corridors at a poor angle.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `enable` | bool | false | Master switch (disabled by default). |
+| `heading_threshold` | float | 0.5 | Heading error (rad, ~30°) above which pre-align may engage. |
+| `obs_distance_threshold` | float | 1.0 | Front-cone obstacle must be closer than this (m) to engage. |
+| `exit_heading_threshold` | float | 0.2 | Exit once error drops below this (rad, ~12°). Keep well below `heading_threshold` for hysteresis. |
+| `exit_obs_distance_threshold` | float | 1.5 | Also exit once front clearance exceeds this (m). |
+| `cone_half_width_rad` | float | 0.524 | Half-width (rad, ±30°) of the forward cone used for the obstacle check. |
+| `angular_kp` | float | 1.5 | P-gain of the rotation: `w = clip(kp * heading_err, ±max_w)`. |
+| `max_w` | float | 0.6 | Rotation speed cap (rad/s). Must not exceed `robot.max_speed[1]`. |
+| `ref_avg_count` | int | 5 | First N path yaws averaged (vector mean) to get a stable target heading. |
+
+#### Adaptive d_max (`adaptive_d_max:`)
+
+Optional runtime override of `d_max`: periodically estimates the local corridor half-width from scan points and sets `d_max = clip(half_width - robot_half_width - safety_margin, min, max)`. Enable when the environment mixes open areas (want a wide buffer) and narrow doorways (need a small one).
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `enable` | bool | false | Master switch (disabled by default). When on, it overwrites the static `d_max` from `planner.yaml`. |
+| `min` | float | 0.05 | Lower clamp on the resulting `d_max` (m). |
+| `max` | float | 0.25 | Upper clamp on the resulting `d_max` (m). |
+| `safety_margin` | float | 0.05 | Subtracted from the free half-width (m); also extends the sampling window slightly behind the robot. |
+| `forward_window_m` | float | 2.0 | Only points up to this far ahead (robot frame) are used for the estimate. |
+| `lateral_window_m` | float | 2.0 | Only points within ± this laterally are used; also the assumed clearance when one side is empty. |
+| `update_period_sec` | float | 0.5 | Re-estimate at most every this many seconds. |
+
+#### Stuck escape (`stuck_escape:`)
+
+Recovery state machine: frames where the robot is not moving (or commanding ~zero) *with* a close front obstacle are counted; at a low count an early A\* replan is requested, and at `trigger_frames` the robot backs up while rotating toward the clearer side until timeout or clearance, then requests a replan. The main loop runs at 50 Hz, so counts are in 20 ms frames (non-stuck frames subtract 2).
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `enable` | bool | true | Master switch. |
-| `disp_threshold_m` | float | 0.05 | Frame-to-frame displacement below which the robot is considered "not moving". |
-| `front_clear_threshold_m` | float | 0.6 | Forward clearance below which "stuck" requires obstacle proximity. |
-| `stuck_frames` | int | 15 | Consecutive frames matching the above before full backup-rotate kicks in. |
-| `early_replan_enable` | bool | true | Trigger an early A\* replan via `/neupan/arrive` at low stuck count, **before** the full escape. |
-| `early_replan_trigger_frames` | int | 5 | Stuck-frame count that triggers the early replan. |
-| `early_replan_cooldown_sec` | float | 2.0 | Minimum seconds between two early replans. |
+| `displacement_window_sec` | float | 1.0 | Sliding-window length (s) for displacement measurement. |
+| `displacement_threshold_m` | float | 0.05 | Moving less than this (m) over the window counts as "not moving". Raise if a slow crawl should also count as stuck. |
+| `v_eps` | float | 0.15 | Alternative trigger: last commanded \|v\| below this (m/s)... |
+| `w_eps` | float | 0.30 | ...and \|w\| below this (rad/s) also counts as "not moving" (planner deadlock). |
+| `trigger_frames` | int | 10 | Stuck-count needed to start the escape maneuver (~0.2 s at 50 Hz). Raise if escapes fire too eagerly. |
+| `front_obs_threshold` | float | 1.0 | A frame only counts as stuck when the front-cone obstacle is closer than this (m). |
+| `cone_half_width_rad` | float | 0.7 | Half-width (rad, ±40°) of the forward cone used for all front/side clearance checks. |
+| `back_speed` | float | 0.2 | Reverse speed (m/s) during the escape maneuver. |
+| `rotate_speed` | float | 0.27 | Rotation speed (rad/s) during escape; sign points toward the clearer side. |
+| `duration_sec` | float | 2.0 | Hard time cap (s) on one escape maneuver. |
+| `exit_obs_distance` | float | 1.0 | Escape may end early once the front cone clears beyond this (m) *and* `min_rotation_rad` is reached. |
+| `side_search_radius_m` | float | 3.5 | Radius (m) of the left/right clearance comparison that picks the rotation direction. |
+| `limit_cycle_consecutive_n` | int | 2 | If this many recent escapes chose the same direction... |
+| `limit_cycle_window_sec` | float | 20.0 | ...within this window (s), the next escape flips direction to break A↔B loops. |
+| `min_rotation_rad` | float | 0.35 | Minimum yaw change (rad, ~20°) before the "cleared" early exit is allowed (timeout still exits). Raise if the robot exits still facing the obstacle. |
+| `early_replan_enable` | bool | true | Request an A\* replan via `/neupan/arrive` at a low stuck count, **before** the full escape. |
+| `early_replan_trigger_frames` | int | 5 | Stuck-count that triggers the early replan. Keep below `trigger_frames`. |
+| `early_replan_cooldown_sec` | float | 2.0 | Minimum interval (s) between two early replans. |
+
+#### Post-escape grace (`stuck_escape.post_escape_grace_*`)
+
+After every escape, `q_theta` and `q_s` are temporarily scaled down so the MPC can leave along the replanned path instead of snapping straight back onto the old one (which re-creates the stuck situation). Weights restore once the robot has moved away with a clear front, or after a hard timeout.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `post_escape_grace_q_theta_scale` | float | 0.25 | Multiplier applied to `q_theta` during grace. Lower = freer heading. |
+| `post_escape_grace_q_s_scale` | float | 0.5 | Multiplier applied to `q_s` during grace. Lower = freer lateral deviation. |
+| `post_escape_grace_min_distance_m` | float | 0.5 | Robot must move this far (m) from grace start before weights can restore. |
+| `post_escape_grace_clear_threshold_m` | float | 1.0 | Front-cone distance (m) above which the front counts as "clear". |
+| `post_escape_grace_clear_dwell_sec` | float | 0.5 | The front must stay clear continuously for this long (s) before restoring. |
+| `post_escape_grace_max_sec` | float | 5.0 | Hard cap (s); weights restore regardless. Lower if the robot wanders off-path too long after escapes. |
+
 
 ### Global planner — `whole.launch`
 
