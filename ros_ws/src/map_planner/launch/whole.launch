@@ -66,6 +66,13 @@
         args="0.00347 0.03447 0.02174 0 0 0 1 odin1_base_link odin1_lidar_link" />
   <node pkg="tf2_ros" type="static_transform_publisher" name="lidar_to_camera"
         args="0.02055 0.0004 -0.00735 0.497 -0.499 0.499 0.504 odin1_lidar_link odin1_camera_link" />
+
+  <!-- Odin SDK 升级后发布的机体基准坐标系从 odin1_base_link 改成了 imu；
+       两者物理位置相同，这里用单位变换把 imu 桥接回 odin1_base_link，
+       下游 odin1_to_base/odin1_to_lidar/lidar_to_camera 以及所有依赖
+       odin1_base_link 的节点（pc_to_scan、fake360、go2_wait_relocalization.sh 等）无需改动。 -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="imu_to_odin1_base"
+        args="0 0 0 0 0 0 imu odin1_base_link" />
   
   <!-- Unitree Control -->
   <node pkg="unitree_control" type="unitree_vel_controller" name="vel_to_sdk"/>

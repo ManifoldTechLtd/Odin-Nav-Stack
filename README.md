@@ -137,6 +137,8 @@ Please edit the `ros_ws/src/odin_ros_driver/include/host_sdk_sample.h`. Please n
     }
     ```
 
+> **Note:** Odin SDK driver v0.14 changed the body reference frame from `odin1_base_link` to `imu`. To maintain backward compatibility with the existing navigation stack, a static transform `imu → odin1_base_link` is published in `whole.launch`.
+
 ## 2. Install System Dependencies
 ``` shell
 export ROS_DISTRO=noetic
